@@ -1,0 +1,21 @@
+services:
+  traccar:
+    image: traccar/traccar:latest
+    restart: always
+    ports:
+      - "5013:5013"       # H02 protocol (Sinotrack ST-901/902) - tracker connects here
+      - "5013:5013/udp"
+    volumes:
+      - traccar-data:/opt/traccar/data
+      - traccar-logs:/opt/traccar/logs
+
+  web:
+    build: ./web
+    restart: always
+    depends_on:
+      - traccar
+    # In Coolify: set the domain on this service, port 80
+
+volumes:
+  traccar-data:
+  traccar-logs:

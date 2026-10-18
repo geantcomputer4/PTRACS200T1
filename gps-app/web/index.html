@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Fleet Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+:root{--ink:#10222b;--mute:#5d707a;--line:#d9e2e6;--bg:#f3f6f7;--panel:#fff;--accent:#0d7c72;--warn:#d9822b;--bad:#b4423a}
+@media(prefers-color-scheme:dark){:root{--ink:#e7eef1;--mute:#93a6af;--line:#26373f;--bg:#0c171c;--panel:#122128;--accent:#2bb3a5;--warn:#e6973f;--bad:#e0685f}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 3px}
+#app{display:grid;grid-template-columns:340px 1fr;height:100%}
+aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+aside header{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+aside h1{font-size:18px;margin:0}
+#list{overflow:auto;flex:1}
+.dev{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;display:grid;grid-template-columns:12px 1fr auto;gap:2px 10px;align-items:center}
+.dev:hover,.dev.sel{background:var(--bg)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}
+.dot.online{background:var(--accent)}.dot.moving{background:var(--warn)}
+.dev small{grid-column:2/4;color:var(--mute)}
+.dev b{font-weight:600}
+#tools{padding:12px 16px;border-top:1px solid var(--line);display:none}
+#tools.on{display:block}
+#tools .row{display:flex;gap:8px}
+#map{height:100%;min-height:0}
+.card{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;z-index:2000}
+.card.on{display:grid}
+.card form{background:var(--panel);padding:22px;border-radius:10px;width:min(360px,92vw)}
+.card h2{margin:0 0 6px;font-size:18px}
+.err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
+.arrow{width:26px;height:26px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:grid;place-items:center}
+.arrow i{display:block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #fff}
+.arrow.moving{background:var(--warn)}.arrow.off{background:var(--mute)}
+@media(max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42% 58%}aside{order:2;border-right:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <header><h1>My Fleet</h1><div><button id="add">Add device</button> <button id="out" title="Log out">Log out</button></div></header>
+    <div id="list"></div>
+    <div id="tools">
+      <strong id="tname"></strong>
+      <label>From</label><input type="datetime-local" id="from">
+      <label>To</label><input type="datetime-local" id="to">
+      <div class="row" style="margin-top:10px"><button class="primary" id="hist">Show route</button><button id="clear">Clear</button></div>
+      <div class="err" id="herr" style="color:var(--mute)"></div>
+    </div>
+  </aside>
+  <div id="map"></div>
+</div>
+
+<div class="card" id="login"><form id="lf">
+  <h2 id="ltitle">Sign in</h2>
+  <div id="nameWrap" hidden><label for="n">Name</label><input id="n"></div>
+  <label for="e">Email</label><input id="e" type="email" required autocomplete="username">
+  <label for="p">Password</label><input id="p" type="password" required autocomplete="current-password">
+  <div class="err" id="lerr"></div>
+  <div style="display:flex;gap:8px;justify-content:space-between;margin-top:6px">
+    <button type="button" id="toggle">Create account</button><button class="primary" id="lgo">Sign in</button>
+  </div>
+</form></div>
+
+<div class="card" id="addc"><form id="af">
+  <h2>Add device</h2>
+  <label for="dn">Name</label><input id="dn" required placeholder="My Sinotrack">
+  <label for="di">Device ID</label><input id="di" required placeholder="9175285171">
+  <div class="err" id="aerr"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+    <button type="button" id="acancel">Cancel</button><button class="primary">Save device</button>
+  </div>
+</form></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const api=(p,o={})=>fetch('/api'+p,{credentials:'same-origin',...o});
+const devices={},positions={},markers={};let sel=null,route=null,ws=null,signup=false,fitted=false;
+const map=L.map('map').setView([31.63,-8.0],12);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+
+function status(d){const p=positions[d.id];if(d.status!=='online')return'off';return p&&p.speed>1?'moving':'online'}
+function icon(d){const p=positions[d.id];return L.divIcon({className:'',iconSize:[26,26],html:`<div class="arrow ${status(d)==='moving'?'moving':status(d)==='off'?'off':''}"><i style="transform:rotate(${p?p.course:0}deg)"></i></div>`})}
+function render(){
+  const ids=Object.keys(devices);
+  $('#list').innerHTML=ids.length?'':'<p style="padding:16px;color:var(--mute)">No devices yet. Add your tracker with its ID.</p>';
+  ids.forEach(id=>{
+    const d=devices[id],p=positions[id],s=status(d),el=document.createElement('div');
+    el.className='dev'+(sel==id?' sel':'');
+    el.innerHTML=`<span class="dot ${s}"></span><b></b><span>${p?Math.round(p.speed*1.852)+' km/h':''}</span><small>${p?new Date(p.fixTime).toLocaleString():'No position yet'}${p&&p.attributes&&p.attributes.batteryLevel!=null?' - battery '+p.attributes.batteryLevel+'%':''}</small>`;
+    el.querySelector('b').textContent=d.name;
+    el.onclick=()=>select(id,true);
+    $('#list').appendChild(el);
+    if(p){
+      if(!markers[id]){markers[id]=L.marker([p.latitude,p.longitude],{icon:icon(d)}).addTo(map).bindTooltip(d.name)}
+      else{markers[id].setLatLng([p.latitude,p.longitude]);markers[id].setIcon(icon(d))}
+    }
+  });
+  if(!fitted){const pts=Object.values(markers).map(m=>m.getLatLng());if(pts.length){map.fitBounds(L.latLngBounds(pts),{maxZoom:16,padding:[60,60]});fitted=true}}
+}
+function select(id,pan){
+  sel=id;$('#tools').classList.add('on');$('#tname').textContent=devices[id].name;
+  if(pan&&markers[id])map.setView(markers[id].getLatLng(),Math.max(map.getZoom(),15));
+  render();
+}
+function connect(){
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/socket');
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    (m.devices||[]).forEach(d=>devices[d.id]=d);
+    (m.positions||[]).forEach(p=>positions[p.deviceId]=p);render()};
+  ws.onclose=()=>{if($('#login').classList.contains('on'))return;setTimeout(connect,3000)};
+}
+async function start(){
+  const r=await api('/session');
+  if(!r.ok){$('#login').classList.add('on');return}
+  $('#login').classList.remove('on');
+  (await (await api('/devices')).json()).forEach(d=>devices[d.id]=d);
+  (await (await api('/positions')).json()).forEach(p=>positions[p.deviceId]=p);
+  render();connect();
+  const to=new Date(),from=new Date(Date.now()-864e5),f=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16);
+  $('#from').value=f(from);$('#to').value=f(to);
+}
+$('#toggle').onclick=()=>{signup=!signup;$('#nameWrap').hidden=!signup;$('#n').required=signup;
+  $('#ltitle').textContent=signup?'Create account':'Sign in';$('#lgo').textContent=signup?'Create account':'Sign in';
+  $('#toggle').textContent=signup?'I have an account':'Create account'};
+$('#lf').onsubmit=async e=>{e.preventDefault();$('#lerr').textContent='';
+  if(signup){const r=await api('/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#n').value,email:$('#e').value,password:$('#p').value})});
+    if(!r.ok){$('#lerr').textContent='Could not create the account. Registration may be closed.';return}}
+  const r=await api('/session',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:$('#e').value,password:$('#p').value})});
+  if(!r.ok){$('#lerr').textContent='Wrong email or password.';return}
+  start()};
+$('#out').onclick=async()=>{await api('/session',{method:'DELETE'});location.reload()};
+$('#add').onclick=()=>$('#addc').classList.add('on');
+$('#acancel').onclick=()=>$('#addc').classList.remove('on');
+$('#af').onsubmit=async e=>{e.preventDefault();
+  const r=await api('/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#dn').value,uniqueId:$('#di').value.trim()})});
+  if(!r.ok){$('#aerr').textContent='Could not save. Check that the ID is not already used.';return}
+  const d=await r.json();devices[d.id]=d;$('#addc').classList.remove('on');$('#af').reset();render()};
+$('#hist').onclick=async()=>{
+  if(sel==null)return;$('#herr').textContent='Loading...';
+  const q=new URLSearchParams({deviceId:sel,from:new Date($('#from').value).toISOString(),to:new Date($('#to').value).toISOString()});
+  const r=await api('/reports/route?'+q,{headers:{Accept:'application/json'}});
+  if(!r.ok){$('#herr').textContent='Could not load the route.';return}
+  const pts=(await r.json()).map(p=>[p.latitude,p.longitude]);
+  if(route)map.removeLayer(route);
+  if(!pts.length){$('#herr').textContent='No positions in this period.';return}
+  route=L.polyline(pts,{color:'#0d7c72',weight:4}).addTo(map);map.fitBounds(route.getBounds(),{padding:[40,40]});
+  $('#herr').textContent=pts.length+' points';};
+$('#clear').onclick=()=>{if(route)map.removeLayer(route);route=null;$('#herr').textContent=''};
+start();
+</script>
+</body>
+</html>
