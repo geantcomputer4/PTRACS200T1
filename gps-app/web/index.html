@@ -265,24 +265,33 @@ function beep(){try{const c=new(window.AudioContext||window.webkitAudioContext)(
 /* toolbox: cell tower locator */
 try{$('#ckey').value=localStorage.getItem('ockey')||''}catch(e){}
 let cm=null,cc=null;
-$('#cfill').onclick=()=>{const p=pos[sel],t=p&&p.network&&p.network.cellTowers&&p.network.cellTowers[0];
-  if(!t)return $('#cres').textContent='Select your tracker first. It has not sent tower data yet.';
-  $('#cmcc').value=t.mobileCountryCode;$('#cmnc').value=t.mobileNetworkCode;$('#clac').value=t.locationAreaCode;$('#ccid').value=t.cellId;
-  const m={gsm:'GSM',wcdma:'UMTS',umts:'UMTS',lte:'LTE',nr:'NR'}[String(t.radioType||'').toLowerCase()];if(m)$('#crad').value=m;
-  $('#cres').textContent='Filled from the last tower your tracker reported.'};
+$('#cfill').onclick=()=>{const p=pos[sel];
+  if(!p)return $('#cres').textContent='Select your tracker in the Devices tab first.';
+  const t=p.network&&p.network.cellTowers&&p.network.cellTowers[0],a=p.attributes||{};let v;
+  if(t)v=[t.mobileCountryCode,t.mobileNetworkCode,t.locationAreaCode,t.cellId];
+  else if(a.io1!=null&&a.io3!=null&&a.io4!=null)v=[a.io1,a.io2,a.io3,a.io4];
+  if(!v)return $('#cres').textContent='Your tracker has not sent tower numbers yet.';
+  ['cmcc','cmnc','clac','ccid'].forEach((id,i)=>$('#'+id).value=v[i]);
+  $('#crad').value='GSM';$('#cres').textContent='Filled from your tracker. Now press Locate tower.'};
+const look=async(r,mcc,mnc,lac,cid,k)=>{try{return await (await fetch('/cell/cell/get?'+new URLSearchParams({key:k,mcc,mnc,lac,cellid:cid,radio:r,format:'json'}))).json()}catch(e){return{}}};
 $('#cgo').onclick=async()=>{
   const k=$('#ckey').value.trim();if(!k)return $('#cres').textContent='Paste your free OpenCellID key first.';
   try{localStorage.setItem('ockey',k)}catch(e){}
-  const q=new URLSearchParams({key:k,mcc:$('#cmcc').value,mnc:$('#cmnc').value,lac:$('#clac').value,cellid:$('#ccid').value,radio:$('#crad').value,format:'json'});
+  const v=['cmcc','cmnc','clac','ccid'].map(id=>$('#'+id).value.trim());
+  if(v.some(x=>!x))return $('#cres').textContent='Fill the four numbers first, or press Fill from my tracker.';
   $('#cres').textContent='Looking up...';
-  try{const j=await (await fetch('/cell/cell/get?'+q)).json();
-    if(!j.lat)return $('#cres').textContent='Tower not found. Try another network type (2G, 3G, 4G, 5G) or check the numbers.';
-    if(cm)map.removeLayer(cm);if(cc)map.removeLayer(cc);
-    cm=L.marker([j.lat,j.lon]).addTo(map).bindTooltip('Cell tower');
-    cc=L.circle([j.lat,j.lon],{radius:j.range||1000,color:'#6a5acd',weight:1,fillOpacity:.1}).addTo(map);map.fitBounds(cc.getBounds());
-    let t=`Tower at ${j.lat.toFixed(5)}, ${j.lon.toFixed(5)}, range about ${fd(j.range||0)}.`;
-    const p=pos[sel];if(p)t+=` Your tracker is ${fd(hav({latitude:j.lat,longitude:j.lon},p))} from this tower.`;
-    $('#cres').textContent=t}catch(e){$('#cres').textContent='Lookup failed. Check the key and try again.'}};
+  const sr=$('#crad').value,radios=[sr,...['GSM','UMTS','LTE'].filter(x=>x!==sr)];let j={},note='';
+  outer:for(const r of radios)for(const hex of [false,true]){
+    const lac=hex?parseInt(v[2],16):+v[2],cid=hex?parseInt(v[3],16):+v[3];
+    j=await look(r,+v[0],+v[1],lac,cid,k);
+    if(j.lat){note=` Matched as ${r==='GSM'?'2G':r==='UMTS'?'3G':r==='LTE'?'4G':'5G'}${hex?', numbers read as hex':''}.`;break outer}}
+  if(!j.lat)return $('#cres').textContent='Tower not found in the free OpenCellID database. Check the numbers, or this tower may not be mapped yet.';
+  if(cm)map.removeLayer(cm);if(cc)map.removeLayer(cc);
+  cm=L.marker([j.lat,j.lon]).addTo(map).bindTooltip('Cell tower');
+  cc=L.circle([j.lat,j.lon],{radius:j.range||1000,color:'#6a5acd',weight:1,fillOpacity:.1}).addTo(map);map.fitBounds(cc.getBounds());
+  let t=`Tower at ${j.lat.toFixed(5)}, ${j.lon.toFixed(5)}, range about ${fd(j.range||0)}.${note}`;
+  const p=pos[sel];if(p)t+=` Your tracker is ${fd(hav({latitude:j.lat,longitude:j.lon},p))} from this tower.`;
+  $('#cres').textContent=t};
 
 /* tabs, socket, auth */
 function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
