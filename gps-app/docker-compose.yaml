@@ -17,6 +17,10 @@ services:
       - EVENT_FORWARD_URL=http://notifier:3000/event
       - EVENT_FORWARD_JSON=true
       - EVENT_MOTION_SPEEDTHRESHOLD=1.5
+      - GEOLOCATION_ENABLE=true
+      - GEOLOCATION_TYPE=opencellid
+      - GEOLOCATION_KEY=${OPENCELLID_KEY}
+      - GEOLOCATION_PROCESSINVALIDPOSITIONS=true
     volumes:
       - traccar-data:/opt/traccar/data
       - traccar-logs:/opt/traccar/logs
