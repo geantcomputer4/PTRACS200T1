@@ -1,161 +1,245 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>My Fleet Tracker</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fleet Tracker</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <style>
 :root{--ink:#10222b;--mute:#5d707a;--line:#d9e2e6;--bg:#f3f6f7;--panel:#fff;--accent:#0d7c72;--warn:#d9822b;--bad:#b4423a}
 @media(prefers-color-scheme:dark){:root{--ink:#e7eef1;--mute:#93a6af;--line:#26373f;--bg:#0c171c;--panel:#122128;--accent:#2bb3a5;--warn:#e6973f;--bad:#e0685f}}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
-body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
-button,input{font:inherit;color:inherit}
-button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:7px 12px}
+body{font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 10px}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
-label{display:block;font-size:13px;color:var(--mute);margin:10px 0 3px}
-#app{display:grid;grid-template-columns:340px 1fr;height:100%}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+label{display:block;font-size:12px;color:var(--mute);margin:10px 0 3px}
+.mute{color:var(--mute);font-size:12px}.row{display:flex;gap:6px;margin-top:8px;align-items:center}.row>*{flex:1}
+#app{display:grid;grid-template-columns:380px 1fr;height:100%}
 aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
-aside header{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
-aside h1{font-size:18px;margin:0}
-#list{overflow:auto;flex:1}
-.dev{padding:12px 16px;border-bottom:1px solid var(--line);cursor:pointer;display:grid;grid-template-columns:12px 1fr auto;gap:2px 10px;align-items:center}
-.dev:hover,.dev.sel{background:var(--bg)}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}
-.dot.online{background:var(--accent)}.dot.moving{background:var(--warn)}
-.dev small{grid-column:2/4;color:var(--mute)}
-.dev b{font-weight:600}
-#tools{padding:12px 16px;border-top:1px solid var(--line);display:none}
-#tools.on{display:block}
-#tools .row{display:flex;gap:8px}
+aside header{padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+aside h1{font-size:17px;margin:0}
+nav{display:flex;border-bottom:1px solid var(--line)}
+nav button{flex:1;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:9px 4px}
+nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+.tab{display:none;overflow:auto;flex:1;min-height:0}.tab.on{display:block}
+#stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+#stats div{padding:10px 6px;text-align:center}#stats b{display:block;font-size:20px}
+.dev{padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;display:grid;grid-template-columns:12px 1fr auto;gap:2px 10px;align-items:center}
+.dev:hover,.dev.sel{background:var(--bg)}.dev small{grid-column:2/4;color:var(--mute)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mute)}.dot.on{background:var(--accent)}.dot.moving{background:var(--warn)}
+#detail{padding:14px;border-top:2px solid var(--accent)}
+.hd{display:flex;justify-content:space-between;font-size:16px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin-top:8px}.kv span:nth-child(odd){color:var(--mute)}
+.item{padding:10px 14px;border-bottom:1px solid var(--line)}.item small{display:block;color:var(--mute)}
 #map{height:100%;min-height:0}
-.card{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;z-index:2000}
-.card.on{display:grid}
-.card form{background:var(--panel);padding:22px;border-radius:10px;width:min(360px,92vw)}
-.card h2{margin:0 0 6px;font-size:18px}
+.pad{padding:14px}
+.card{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;place-items:center;z-index:2000}.card.on{display:grid}
+.card form{background:var(--panel);padding:22px;border-radius:10px;width:min(360px,92vw)}.card h2{margin:0 0 6px;font-size:18px}
 .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
 .arrow{width:26px;height:26px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:grid;place-items:center}
-.arrow i{display:block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #fff}
+.arrow i{display:block;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #fff}
 .arrow.moving{background:var(--warn)}.arrow.off{background:var(--mute)}
-@media(max-width:760px){#app{grid-template-columns:1fr;grid-template-rows:42% 58%}aside{order:2;border-right:0;border-top:1px solid var(--line)}}
-</style>
-</head>
+#toasts{position:fixed;right:12px;top:12px;z-index:3000;display:grid;gap:8px}
+.toast{background:var(--panel);color:var(--ink);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:300px}
+@media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:42% 58%}aside{order:2;border-right:0;border-top:1px solid var(--line)}}
+</style></head>
 <body>
+<div id="toasts"></div>
 <div id="app">
-  <aside>
-    <header><h1>My Fleet</h1><div><button id="add">Add device</button> <button id="out" title="Log out">Log out</button></div></header>
-    <div id="list"></div>
-    <div id="tools">
-      <strong id="tname"></strong>
-      <label>From</label><input type="datetime-local" id="from">
-      <label>To</label><input type="datetime-local" id="to">
-      <div class="row" style="margin-top:10px"><button class="primary" id="hist">Show route</button><button id="clear">Clear</button></div>
-      <div class="err" id="herr" style="color:var(--mute)"></div>
-    </div>
-  </aside>
-  <div id="map"></div>
+<aside>
+ <header><h1>Fleet Tracker</h1><div><button id="add">Add device</button> <button id="out">Log out</button></div></header>
+ <nav><button data-t="dev" class="on">Devices</button><button data-t="alr">Alerts</button><button data-t="zon">Zones</button><button data-t="trp">Trips</button></nav>
+
+ <section class="tab on" id="t-dev">
+  <div id="stats"></div><div id="list"></div>
+  <div id="detail" hidden>
+   <div class="hd"><b id="dn"></b><span id="ds" class="mute"></span></div>
+   <div class="kv" id="kv"></div>
+   <label>Speed limit (km/h), alerts when exceeded</label>
+   <div class="row"><input id="sl" type="number" min="0"><button id="slb">Save</button></div>
+   <div class="row"><button id="fol">Follow</button><button id="del">Delete device</button></div>
+   <label>History period</label>
+   <div class="row"><button data-h="0">Today</button><button data-h="24">24 h</button><button data-h="168">7 days</button></div>
+   <div class="row"><input type="datetime-local" id="from"><input type="datetime-local" id="to"></div>
+   <div class="row"><button class="primary" id="hist">Show route</button><button id="trips">Trips</button><button id="csv">CSV</button></div>
+   <div id="rs" class="mute" style="margin-top:6px"></div>
+   <div id="rp" hidden><div class="row"><button id="pl">Play</button><select id="spd"><option value="1">1x</option><option value="4">4x</option><option value="16">16x</option><option value="64">64x</option></select><span id="rt" class="mute"></span></div><input type="range" id="sk" min="0" value="0" style="padding:0;margin-top:8px"></div>
+  </div>
+ </section>
+
+ <section class="tab" id="t-alr"><div class="pad">
+  <button class="primary" id="alon">Turn on alerts</button>
+  <p class="mute">Alerts show a message here when a device goes online or offline, starts or stops, enters or leaves a zone, or exceeds its speed limit.</p>
+  <button id="reg">Close public sign-up</button>
+ </div><div id="evs"></div></section>
+
+ <section class="tab" id="t-zon"><div class="pad">
+  <button class="primary" id="zadd">Add zone</button>
+  <p class="mute" id="zhint">A zone is a circle on the map. You get an alert when a device enters or leaves it.</p>
+  <div id="zform" hidden>
+   <label>Name</label><input id="zn"><label>Radius (meters)</label><input id="zr" type="number" value="300" min="20">
+   <div class="row"><button class="primary" id="zsave">Save zone</button><button id="zcancel">Cancel</button></div>
+  </div></div><div id="zl"></div></section>
+
+ <section class="tab" id="t-trp"><div class="pad mute" id="tmsg">Select a device, choose a period, then press Trips.</div><div id="tl"></div></section>
+</aside>
+<div id="map"></div>
 </div>
 
 <div class="card" id="login"><form id="lf">
-  <h2 id="ltitle">Sign in</h2>
-  <div id="nameWrap" hidden><label for="n">Name</label><input id="n"></div>
-  <label for="e">Email</label><input id="e" type="email" required autocomplete="username">
-  <label for="p">Password</label><input id="p" type="password" required autocomplete="current-password">
-  <div class="err" id="lerr"></div>
-  <div style="display:flex;gap:8px;justify-content:space-between;margin-top:6px">
-    <button type="button" id="toggle">Create account</button><button class="primary" id="lgo">Sign in</button>
-  </div>
+ <h2 id="ltitle">Sign in</h2>
+ <div id="nameWrap" hidden><label for="n">Name</label><input id="n"></div>
+ <label for="e">Email</label><input id="e" type="email" required autocomplete="username">
+ <label for="p">Password</label><input id="p" type="password" required autocomplete="current-password">
+ <div class="err" id="lerr"></div>
+ <div class="row"><button type="button" id="toggle">Create account</button><button class="primary" id="lgo">Sign in</button></div>
 </form></div>
-
 <div class="card" id="addc"><form id="af">
-  <h2>Add device</h2>
-  <label for="dn">Name</label><input id="dn" required placeholder="My Sinotrack">
-  <label for="di">Device ID</label><input id="di" required placeholder="9175285171">
-  <div class="err" id="aerr"></div>
-  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
-    <button type="button" id="acancel">Cancel</button><button class="primary">Save device</button>
-  </div>
+ <h2>Add device</h2>
+ <label for="dnm">Name</label><input id="dnm" required placeholder="My Sinotrack">
+ <label for="di">Device ID</label><input id="di" required placeholder="9175285171">
+ <div class="err" id="aerr"></div>
+ <div class="row"><button type="button" id="acancel">Cancel</button><button class="primary">Save device</button></div>
 </form></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
-const $=s=>document.querySelector(s);
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const api=(p,o={})=>fetch('/api'+p,{credentials:'same-origin',...o});
-const devices={},positions={},markers={};let sel=null,route=null,ws=null,signup=false,fitted=false;
-const map=L.map('map').setView([31.63,-8.0],12);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+const J=(p,m,b)=>api(p,{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+const G=async p=>{const r=await api(p,{headers:{Accept:'application/json'}});if(!r.ok)throw r;return r.json()};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kmh=s=>Math.round((s||0)*1.852);
+const ago=t=>{if(!t)return'never';const s=(Date.now()-new Date(t))/1e3;return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':new Date(t).toLocaleDateString()};
+const col=v=>v<30?'#2bb3a5':v<60?'#e6b83f':v<90?'#e6973f':'#e0685f';
+const hav=(a,b)=>{const R=6371e3,r=x=>x*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude),h=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
+const dur=ms=>{const m=Math.round(ms/6e4);return m<60?m+' min':Math.floor(m/60)+' h '+m%60+' min'};
+const EV={deviceOnline:'came online',deviceOffline:'went offline',deviceMoving:'started moving',deviceStopped:'stopped',geofenceEnter:'entered a zone',geofenceExit:'left a zone',deviceOverspeed:'exceeded the speed limit',ignitionOn:'ignition on',ignitionOff:'ignition off',alarm:'raised an alarm'};
+const dev={},pos={},mk={},zones={};let sel=null,follow=false,ws,signup=false,fitted=false,rl=null,rp=[],ri=0,rm=null,timer=null,picking=false,pick=null;
 
-function status(d){const p=positions[d.id];if(d.status!=='online')return'off';return p&&p.speed>1?'moving':'online'}
-function icon(d){const p=positions[d.id];return L.divIcon({className:'',iconSize:[26,26],html:`<div class="arrow ${status(d)==='moving'?'moving':status(d)==='off'?'off':''}"><i style="transform:rotate(${p?p.course:0}deg)"></i></div>`})}
+const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
+const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
+const map=L.map('map',{layers:[osm]}).setView([31.63,-8],12);
+L.control.layers({Street:osm,Satellite:sat}).addTo(map);
+const zg=L.layerGroup().addTo(map);
+
+const st=d=>d.status!=='online'?'off':(pos[d.id]&&pos[d.id].speed>1?'moving':'on');
+function icon(d){const p=pos[d.id],s=st(d);return L.divIcon({className:'',iconSize:[26,26],html:`<div class="arrow ${s==='moving'?'moving':s==='off'?'off':''}"><i style="transform:rotate(${p?p.course:0}deg)"></i></div>`})}
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;$('#toasts').appendChild(e);setTimeout(()=>e.remove(),7000)}
+
 function render(){
-  const ids=Object.keys(devices);
-  $('#list').innerHTML=ids.length?'':'<p style="padding:16px;color:var(--mute)">No devices yet. Add your tracker with its ID.</p>';
-  ids.forEach(id=>{
-    const d=devices[id],p=positions[id],s=status(d),el=document.createElement('div');
-    el.className='dev'+(sel==id?' sel':'');
-    el.innerHTML=`<span class="dot ${s}"></span><b></b><span>${p?Math.round(p.speed*1.852)+' km/h':''}</span><small>${p?new Date(p.fixTime).toLocaleString():'No position yet'}${p&&p.attributes&&p.attributes.batteryLevel!=null?' - battery '+p.attributes.batteryLevel+'%':''}</small>`;
-    el.querySelector('b').textContent=d.name;
-    el.onclick=()=>select(id,true);
-    $('#list').appendChild(el);
-    if(p){
-      if(!markers[id]){markers[id]=L.marker([p.latitude,p.longitude],{icon:icon(d)}).addTo(map).bindTooltip(d.name)}
-      else{markers[id].setLatLng([p.latitude,p.longitude]);markers[id].setIcon(icon(d))}
-    }
+  const all=Object.values(dev),on=all.filter(d=>d.status==='online'),mv=all.filter(d=>st(d)==='moving');
+  $('#stats').innerHTML=[['Total',all.length],['Online',on.length],['Moving',mv.length],['Offline',all.length-on.length]].map(x=>`<div><b>${x[1]}</b><span class="mute">${x[0]}</span></div>`).join('');
+  $('#list').innerHTML=all.length?'':'<p class="pad mute">No devices yet. Add your tracker with its ID.</p>';
+  all.forEach(d=>{const p=pos[d.id],el=document.createElement('div');
+    el.className='dev'+(sel==d.id?' sel':'');
+    el.innerHTML=`<span class="dot ${st(d)}"></span><b>${esc(d.name)}</b><span>${p?kmh(p.speed)+' km/h':''}</span><small>${p?ago(p.fixTime):'No position yet'}</small>`;
+    el.onclick=()=>select(d.id,true);$('#list').appendChild(el);
+    if(p){if(!mk[d.id])mk[d.id]=L.marker([p.latitude,p.longitude],{icon:icon(d)}).addTo(map).bindTooltip(d.name,{permanent:true,direction:'top',offset:[0,-14]});
+      else{mk[d.id].setLatLng([p.latitude,p.longitude]);mk[d.id].setIcon(icon(d));mk[d.id].setTooltipContent(d.name)}}
   });
-  if(!fitted){const pts=Object.values(markers).map(m=>m.getLatLng());if(pts.length){map.fitBounds(L.latLngBounds(pts),{maxZoom:16,padding:[60,60]});fitted=true}}
+  if(!fitted){const pts=Object.values(mk).map(m=>m.getLatLng());if(pts.length){map.fitBounds(L.latLngBounds(pts),{maxZoom:16,padding:[60,60]});fitted=true}}
+  if(sel!=null&&dev[sel])detail();
 }
-function select(id,pan){
-  sel=id;$('#tools').classList.add('on');$('#tname').textContent=devices[id].name;
-  if(pan&&markers[id])map.setView(markers[id].getLatLng(),Math.max(map.getZoom(),15));
-  render();
+function detail(){
+  const d=dev[sel],p=pos[sel],a=(p&&p.attributes)||{};
+  $('#detail').hidden=false;$('#dn').textContent=d.name;$('#ds').textContent=d.status==='online'?'Online':'Offline - '+ago(d.lastUpdate);
+  const rows=p?[['Speed',kmh(p.speed)+' km/h'],['Updated',ago(p.fixTime)],['Battery',a.batteryLevel!=null?a.batteryLevel+'%':'-'],['Ignition',a.ignition==null?'-':a.ignition?'On':'Off'],['Satellites',a.sat??'-'],['Distance',a.totalDistance?(a.totalDistance/1000).toFixed(1)+' km':'-'],['Position',p.latitude.toFixed(5)+', '+p.longitude.toFixed(5)],['Address',p.address||'-']]:[['Position','No data yet']];
+  $('#kv').innerHTML=rows.map(r=>`<span>${r[0]}</span><span>${esc(r[1])}</span>`).join('');
+  if(document.activeElement!==$('#sl'))$('#sl').value=d.attributes&&d.attributes.speedLimit?kmh(d.attributes.speedLimit):'';
+  if(follow&&mk[sel])map.panTo(mk[sel].getLatLng());
 }
-function connect(){
-  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/socket');
-  ws.onmessage=e=>{const m=JSON.parse(e.data);
-    (m.devices||[]).forEach(d=>devices[d.id]=d);
-    (m.positions||[]).forEach(p=>positions[p.deviceId]=p);render()};
-  ws.onclose=()=>{if($('#login').classList.contains('on'))return;setTimeout(connect,3000)};
+function select(id,pan){sel=id;if(pan&&mk[id])map.setView(mk[id].getLatLng(),Math.max(map.getZoom(),15));render()}
+
+/* history + replay */
+function clearRoute(){stop();if(rl)map.removeLayer(rl);if(rm)map.removeLayer(rm);rl=rm=null;rp=[];$('#rp').hidden=true}
+async function route(from,to){
+  $('#rs').textContent='Loading...';
+  try{
+    const a=await G('/reports/route?'+new URLSearchParams({deviceId:sel,from:from.toISOString(),to:to.toISOString()}));
+    clearRoute();if(!a.length){$('#rs').textContent='No positions in this period.';return}
+    rp=a;let dist=0,mx=0;for(let i=1;i<a.length;i++)dist+=hav(a[i-1],a[i]);a.forEach(p=>mx=Math.max(mx,p.speed));
+    const step=Math.ceil(a.length/1200);rl=L.layerGroup().addTo(map);
+    for(let i=step;i<a.length;i+=step){const x=a[i-step],y=a[i];L.polyline([[x.latitude,x.longitude],[y.latitude,y.longitude]],{color:col(kmh(y.speed)),weight:5}).addTo(rl)}
+    map.fitBounds(L.latLngBounds(a.map(p=>[p.latitude,p.longitude])),{padding:[40,40]});
+    const mins=(new Date(a[a.length-1].fixTime)-new Date(a[0].fixTime))/6e4;
+    $('#rs').textContent=`${(dist/1000).toFixed(1)} km, max ${kmh(mx)} km/h, avg ${mins>0?Math.round(dist/1000/(mins/60)):0} km/h, ${a.length} points`;
+    $('#rp').hidden=false;$('#sk').max=a.length-1;setIdx(0);
+  }catch(e){$('#rs').textContent='Could not load the route.'}
 }
+function setIdx(i){ri=Math.min(i,rp.length-1);const p=rp[ri];if(!p)return;
+  if(!rm)rm=L.circleMarker([p.latitude,p.longitude],{radius:8,color:'#fff',weight:2,fillColor:'#10222b',fillOpacity:1}).addTo(map);
+  rm.setLatLng([p.latitude,p.longitude]);$('#sk').value=ri;$('#rt').textContent=new Date(p.fixTime).toLocaleString()+' - '+kmh(p.speed)+' km/h'}
+function stop(){clearInterval(timer);timer=null;$('#pl').textContent='Play'}
+$('#pl').onclick=()=>{if(timer)return stop();$('#pl').textContent='Pause';if(ri>=rp.length-1)setIdx(0);
+  timer=setInterval(()=>{setIdx(ri+ +$('#spd').value);if(ri>=rp.length-1)stop()},150)};
+$('#sk').oninput=e=>setIdx(+e.target.value);
+const lf=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16);
+$$('[data-h]').forEach(b=>b.onclick=()=>{const h=+b.dataset.h,to=new Date(),from=h?new Date(Date.now()-h*36e5):new Date(new Date().setHours(0,0,0,0));$('#from').value=lf(from);$('#to').value=lf(to)});
+$('#hist').onclick=()=>sel!=null&&route(new Date($('#from').value),new Date($('#to').value));
+$('#csv').onclick=()=>{if(!rp.length)return;const t='time,latitude,longitude,speed_kmh\n'+rp.map(p=>[p.fixTime,p.latitude,p.longitude,kmh(p.speed)].join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=(dev[sel].name||'route')+'.csv';a.click()};
+$('#fol').onclick=()=>{follow=!follow;$('#fol').textContent=follow?'Following':'Follow';$('#fol').classList.toggle('primary',follow)};
+$('#slb').onclick=async()=>{const d=dev[sel],v=+$('#sl').value;const at={...d.attributes};if(v>0)at.speedLimit=v/1.852;else delete at.speedLimit;
+  const r=await J('/devices/'+d.id,'PUT',{...d,attributes:at});if(r.ok){dev[d.id]=await r.json();toast('Speed limit saved')}};
+$('#del').onclick=async()=>{const d=dev[sel];if(!confirm('Delete '+d.name+' and its history?'))return;
+  await api('/devices/'+d.id,{method:'DELETE'});if(mk[d.id])map.removeLayer(mk[d.id]);delete mk[d.id];delete dev[d.id];delete pos[d.id];sel=null;$('#detail').hidden=true;clearRoute();render()};
+
+/* trips */
+$('#trips').onclick=async()=>{show('trp');$('#tmsg').textContent='Loading...';$('#tl').innerHTML='';
+  try{const f=new Date($('#from').value),t=new Date($('#to').value);
+    const a=await G('/reports/trips?'+new URLSearchParams({deviceId:sel,from:f.toISOString(),to:t.toISOString()}));
+    $('#tmsg').textContent=a.length?a.length+' trips. Tap one to see it on the map.':'No trips in this period.';
+    a.forEach(x=>{const e=document.createElement('div');e.className='item';e.style.cursor='pointer';
+      e.innerHTML=`<b>${new Date(x.startTime).toLocaleString()}</b><small>${(x.distance/1000).toFixed(1)} km, ${dur(x.duration)}, avg ${kmh(x.averageSpeed)} km/h, max ${kmh(x.maxSpeed)} km/h</small><small>${esc(x.startAddress||'')} ${x.endAddress?'to '+esc(x.endAddress):''}</small>`;
+      e.onclick=()=>{show('dev');route(new Date(x.startTime),new Date(x.endTime))};$('#tl').appendChild(e)});
+  }catch(e){$('#tmsg').textContent='Could not load trips.'}};
+
+/* zones */
+function shape(z){const n=(z.area.match(/-?\d+\.?\d*/g)||[]).map(Number);
+  if(/^CIRCLE/i.test(z.area))return L.circle([n[0],n[1]],{radius:n[2],color:'#d9822b',weight:2});
+  const p=[];for(let i=0;i+1<n.length;i+=2)p.push([n[i],n[i+1]]);return L.polygon(p,{color:'#d9822b',weight:2})}
+async function loadZones(){zg.clearLayers();$('#zl').innerHTML='';
+  try{(await G('/geofences')).forEach(z=>{zones[z.id]=z;try{shape(z).addTo(zg).bindTooltip(z.name)}catch(e){}
+    const e=document.createElement('div');e.className='item row';e.innerHTML=`<span>${esc(z.name)}</span><button style="flex:0">Delete</button>`;
+    e.querySelector('button').onclick=async()=>{if(confirm('Delete zone '+z.name+'?')){await api('/geofences/'+z.id,{method:'DELETE'});loadZones()}};$('#zl').appendChild(e)})}catch(e){}}
+$('#zadd').onclick=()=>{picking=true;$('#zhint').textContent='Click the map where the zone should be centered.'};
+map.on('click',e=>{if(!picking)return;picking=false;pick=e.latlng;$('#zform').hidden=false;$('#zhint').textContent='Set a name and radius, then save.';drawPick()});
+function drawPick(){if(window.pc)map.removeLayer(window.pc);window.pc=L.circle(pick,{radius:+$('#zr').value||300,color:'#0d7c72',dashArray:'6'}).addTo(map)}
+$('#zr').oninput=()=>pick&&drawPick();
+$('#zcancel').onclick=()=>{$('#zform').hidden=true;pick=null;if(window.pc)map.removeLayer(window.pc)};
+$('#zsave').onclick=async()=>{if(!pick||!$('#zn').value)return;
+  const r=await J('/geofences','POST',{name:$('#zn').value,area:`CIRCLE (${pick.lat.toFixed(6)} ${pick.lng.toFixed(6)}, ${+$('#zr').value})`});
+  if(r.ok){const z=await r.json();await Promise.all(Object.keys(dev).map(id=>J('/permissions','POST',{deviceId:+id,geofenceId:z.id})));toast('Zone saved');$('#zcancel').onclick();$('#zn').value='';loadZones()}};
+
+/* alerts */
+async function alertsState(){try{const n=await G('/notifications');if(n.some(x=>x.type==='allEvents')){$('#alon').textContent='Alerts are on';$('#alon').disabled=true}}catch(e){}}
+$('#alon').onclick=async()=>{const r=await J('/notifications','POST',{type:'allEvents',notificators:'web',always:true});if(r.ok){$('#alon').textContent='Alerts are on';$('#alon').disabled=true}};
+$('#reg').onclick=async()=>{try{const s=await G('/server');await J('/server','PUT',{...s,registration:false});toast('Public sign-up closed')}catch(e){toast('Only the admin can change this')}};
+function onEvent(ev){const d=dev[ev.deviceId],z=ev.geofenceId&&zones[ev.geofenceId],t=`${d?d.name:'Device'} ${EV[ev.type]||ev.type}${z?' ('+z.name+')':''}`;
+  toast(t);const e=document.createElement('div');e.className='item';e.innerHTML=`${esc(t)}<small>${new Date(ev.eventTime).toLocaleString()}</small>`;$('#evs').prepend(e)}
+
+/* tabs, socket, auth */
+function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
+$$('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t));
+function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/socket');
+  ws.onmessage=e=>{const m=JSON.parse(e.data);(m.devices||[]).forEach(d=>dev[d.id]=d);(m.positions||[]).forEach(p=>pos[p.deviceId]=p);(m.events||[]).forEach(onEvent);render()};
+  ws.onclose=()=>{if(!$('#login').classList.contains('on'))setTimeout(connect,3000)}}
 async function start(){
-  const r=await api('/session');
-  if(!r.ok){$('#login').classList.add('on');return}
+  if(!(await api('/session')).ok){$('#login').classList.add('on');return}
   $('#login').classList.remove('on');
-  (await (await api('/devices')).json()).forEach(d=>devices[d.id]=d);
-  (await (await api('/positions')).json()).forEach(p=>positions[p.deviceId]=p);
-  render();connect();
-  const to=new Date(),from=new Date(Date.now()-864e5),f=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16);
-  $('#from').value=f(from);$('#to').value=f(to);
-}
+  (await G('/devices')).forEach(d=>dev[d.id]=d);(await G('/positions')).forEach(p=>pos[p.deviceId]=p);
+  $('[data-h="24"]').click();render();connect();loadZones();alertsState()}
 $('#toggle').onclick=()=>{signup=!signup;$('#nameWrap').hidden=!signup;$('#n').required=signup;
-  $('#ltitle').textContent=signup?'Create account':'Sign in';$('#lgo').textContent=signup?'Create account':'Sign in';
-  $('#toggle').textContent=signup?'I have an account':'Create account'};
+  $('#ltitle').textContent=$('#lgo').textContent=signup?'Create account':'Sign in';$('#toggle').textContent=signup?'I have an account':'Create account'};
 $('#lf').onsubmit=async e=>{e.preventDefault();$('#lerr').textContent='';
-  if(signup){const r=await api('/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#n').value,email:$('#e').value,password:$('#p').value})});
-    if(!r.ok){$('#lerr').textContent='Could not create the account. Registration may be closed.';return}}
+  if(signup){const r=await J('/users','POST',{name:$('#n').value,email:$('#e').value,password:$('#p').value});if(!r.ok){$('#lerr').textContent='Could not create the account. Sign-up may be closed.';return}}
   const r=await api('/session',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({email:$('#e').value,password:$('#p').value})});
-  if(!r.ok){$('#lerr').textContent='Wrong email or password.';return}
-  start()};
+  if(!r.ok){$('#lerr').textContent='Wrong email or password.';return}start()};
 $('#out').onclick=async()=>{await api('/session',{method:'DELETE'});location.reload()};
-$('#add').onclick=()=>$('#addc').classList.add('on');
-$('#acancel').onclick=()=>$('#addc').classList.remove('on');
-$('#af').onsubmit=async e=>{e.preventDefault();
-  const r=await api('/devices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#dn').value,uniqueId:$('#di').value.trim()})});
+$('#add').onclick=()=>$('#addc').classList.add('on');$('#acancel').onclick=()=>$('#addc').classList.remove('on');
+$('#af').onsubmit=async e=>{e.preventDefault();const r=await J('/devices','POST',{name:$('#dnm').value,uniqueId:$('#di').value.trim()});
   if(!r.ok){$('#aerr').textContent='Could not save. Check that the ID is not already used.';return}
-  const d=await r.json();devices[d.id]=d;$('#addc').classList.remove('on');$('#af').reset();render()};
-$('#hist').onclick=async()=>{
-  if(sel==null)return;$('#herr').textContent='Loading...';
-  const q=new URLSearchParams({deviceId:sel,from:new Date($('#from').value).toISOString(),to:new Date($('#to').value).toISOString()});
-  const r=await api('/reports/route?'+q,{headers:{Accept:'application/json'}});
-  if(!r.ok){$('#herr').textContent='Could not load the route.';return}
-  const pts=(await r.json()).map(p=>[p.latitude,p.longitude]);
-  if(route)map.removeLayer(route);
-  if(!pts.length){$('#herr').textContent='No positions in this period.';return}
-  route=L.polyline(pts,{color:'#0d7c72',weight:4}).addTo(map);map.fitBounds(route.getBounds(),{padding:[40,40]});
-  $('#herr').textContent=pts.length+' points';};
-$('#clear').onclick=()=>{if(route)map.removeLayer(route);route=null;$('#herr').textContent=''};
+  const d=await r.json();dev[d.id]=d;$('#addc').classList.remove('on');$('#af').reset();render()};
 start();
-</script>
-</body>
-</html>
+</script></body></html>
