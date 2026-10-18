@@ -13,9 +13,23 @@ services:
       - FILTER_DUPLICATE=true
       - GEOCODER_ENABLE=true
       - GEOCODER_TYPE=nominatim
+      - EVENT_FORWARD_ENABLE=true
+      - EVENT_FORWARD_URL=http://notifier:3000/event
+      - EVENT_FORWARD_JSON=true
+      - EVENT_MOTION_SPEEDTHRESHOLD=1.5
     volumes:
       - traccar-data:/opt/traccar/data
       - traccar-logs:/opt/traccar/logs
+
+  notifier:
+    build: ./notifier
+    restart: always
+    depends_on:
+      - traccar
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+    volumes:
+      - notifier-data:/data
 
   web:
     build: ./web
@@ -28,3 +42,4 @@ services:
 volumes:
   traccar-data:
   traccar-logs:
+  notifier-data:
