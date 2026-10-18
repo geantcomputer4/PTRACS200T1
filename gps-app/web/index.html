@@ -47,10 +47,20 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
 .arrow.moving{background:var(--warn)}.arrow.off{background:var(--mute)}
 #toasts{position:fixed;right:12px;top:12px;z-index:3000;display:grid;gap:8px}
 .toast{background:var(--panel);color:var(--ink);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:300px}
+#mx{position:fixed;top:64px;right:12px;width:320px;z-index:1400;background:#010a01;border:1px solid #39ff6a;border-radius:6px;box-shadow:0 0 18px rgba(0,255,70,.35);font:13px/1.55 ui-monospace,Consolas,monospace;color:#39ff6a;overflow:hidden}
+#mx[hidden]{display:none}#mxc{position:absolute;inset:0;width:100%;height:100%;opacity:.3}
+#mxh{position:relative;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(57,255,106,.35);letter-spacing:.12em;font-size:12px}
+#mxb{background:none;border:1px solid #39ff6a;color:#39ff6a;padding:0 9px;border-radius:3px;line-height:18px}
+#mxt{position:relative;margin:0;padding:10px 12px;white-space:pre;text-shadow:0 0 6px #0f0;font:inherit}
+#mxt::after{content:"_";animation:bl 1s steps(1) infinite}@keyframes bl{50%{opacity:0}}
+#mx.min #mxt,#mx.min #mxc{display:none}
+.fl{animation:fl .6s}@keyframes fl{from{color:#fff;text-shadow:0 0 14px #fff}to{color:#39ff6a}}
+@media(prefers-reduced-motion:reduce){#mxt::after,.fl{animation:none}}
+@media(max-width:800px){#mx{width:250px;top:56px;font-size:11px}}
 @media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:42% 58%}aside{order:2;border-right:0;border-top:1px solid var(--line)}}
 </style></head>
 <body>
-<div id="toasts"></div><div id="hud" hidden></div>
+<div id="toasts"></div><div id="hud" hidden></div><div id="mx" hidden><canvas id="mxc"></canvas><div id="mxh"><span>GPS // LIVE FEED</span><button id="mxb" aria-label="Minimize">-</button></div><pre id="mxt"></pre></div>
 <div id="app">
 <aside>
  <header><h1>Fleet Tracker</h1><div><button id="add">Add device</button> <button id="out">Log out</button></div></header>
@@ -161,7 +171,7 @@ function render(){
       else{mk[d.id].setLatLng([p.latitude,p.longitude]);mk[d.id].setIcon(icon(d));mk[d.id].setTooltipContent(d.name)}if(p.accuracy>5){if(!ac[d.id])ac[d.id]=L.circle([p.latitude,p.longitude],{radius:p.accuracy,color:'#0d7c72',weight:1,fillOpacity:.12,interactive:false}).addTo(map);else{ac[d.id].setLatLng([p.latitude,p.longitude]);ac[d.id].setRadius(p.accuracy)}}}
   });
   if(!fitted){const pts=Object.values(mk).map(m=>m.getLatLng());if(pts.length){map.fitBounds(L.latLngBounds(pts),{maxZoom:16,padding:[60,60]});fitted=true}}
-  if(sel!=null&&dev[sel]){detail();hud()}
+  if(sel!=null&&dev[sel]){detail();hud()}mxUpdate();
 }
 function detail(){
   const d=dev[sel],p=pos[sel],a=(p&&p.attributes)||{};
@@ -324,6 +334,27 @@ $('#cgo').onclick=async()=>{
   let t=`Tower at ${j.lat.toFixed(5)}, ${j.lon.toFixed(5)}, range about ${fd(j.range||0)}.${note}`;
   const p=pos[sel];if(p)t+=` Your tracker is ${fd(hav({latitude:j.lat,longitude:j.lon},p))} from this tower.`;
   $('#cres').textContent=t};
+
+/* matrix live coordinates */
+const mx=$('#mx'),cv=$('#mxc'),cx=cv.getContext('2d');let mxT=null,mxLast='';
+function rain(){clearInterval(mxT);mxT=null;if(mx.classList.contains('min')||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const w=cv.width=mx.offsetWidth,h=cv.height=mx.offsetHeight,f=14,ch='ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ0123456789',cols=Array.from({length:Math.floor(w/f)},()=>Math.random()*h/f);
+  mxT=setInterval(()=>{cx.fillStyle='rgba(0,10,0,.14)';cx.fillRect(0,0,w,h);cx.fillStyle='#39ff6a';cx.font=f+'px monospace';
+    cols.forEach((y,i)=>{cx.fillText(ch[Math.floor(Math.random()*ch.length)],i*f,y*f);cols[i]=y*f>h&&Math.random()>.97?0:y+1})},70)}
+function mxUpdate(){const d=dev[sel]||Object.values(dev)[0];if(!d){mx.hidden=true;return}
+  const p=pos[d.id],a=(p&&p.attributes)||{};mx.hidden=false;
+  const r=(k,v)=>('> '+k).padEnd(11)+v,wk=p&&p.weak&&Date.now()-p.weak<12e4;
+  const L=[r('TARGET',d.name.toUpperCase().slice(0,18)),r('STATUS',(d.status==='online'?'ONLINE':'OFFLINE')+(p&&p.speed>1?' / MOVING':''))];
+  if(p){L.push(r('LAT',p.latitude.toFixed(6)),r('LON',p.longitude.toFixed(6)),r('SPEED',kmh(p.speed)+' km/h'),r('HEADING',Math.round(p.course||0)+'° '+cd(p.course)),
+    r('ACCURACY',p.accuracy?'±'+Math.round(p.accuracy)+' m':'--'),r('GPS',a.approximate?'CELL TOWER':wk?'WEAK':'LOCK'));
+    if(a.io1!=null&&a.io3!=null)L.push(r('CELL',a.io1+'-'+a.io2+' / '+a.io3+' / '+a.io4));
+    L.push(r('FIX',new Date(p.fixTime).toLocaleTimeString()),r('AGE',ago(p.fixTime)))}
+  else L.push(r('SIGNAL','WAITING FOR DATA'));
+  const k=p?p.latitude+','+p.longitude:'';const t=$('#mxt');t.textContent=L.join('\n');
+  if(k!==mxLast){mxLast=k;t.classList.remove('fl');void t.offsetWidth;t.classList.add('fl')}
+  if(!mxT&&!mx.classList.contains('min'))rain()}
+$('#mxb').onclick=()=>{mx.classList.toggle('min');$('#mxb').textContent=mx.classList.contains('min')?'+':'-';rain()};
+addEventListener('resize',()=>{if(!mx.hidden)rain()});
 
 /* tabs, socket, auth */
 function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
