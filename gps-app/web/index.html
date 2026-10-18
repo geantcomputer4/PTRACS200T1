@@ -38,13 +38,19 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
 .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:8px}
 .arrow{width:26px;height:26px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:grid;place-items:center}
 .arrow i{display:block;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:9px solid #fff}
+.arrow::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid var(--accent);opacity:0;animation:pl 2s infinite}
+.arrow.off::after{display:none}@keyframes pl{0%{transform:scale(.7);opacity:.7}100%{transform:scale(1.6);opacity:0}}
+@media(prefers-reduced-motion:reduce){.arrow::after{animation:none}}
+#hud{position:fixed;top:12px;left:calc(50% + 190px);transform:translateX(-50%);z-index:1500;background:var(--panel);color:var(--ink);padding:9px 16px;border-radius:30px;box-shadow:0 4px 16px rgba(0,0,0,.35);display:flex;gap:12px;align-items:center;font-size:15px}
+#hud[hidden]{display:none}#hud i{width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:24px solid var(--accent);display:block}
+@media(max-width:800px){#hud{left:50%;top:8px}}
 .arrow.moving{background:var(--warn)}.arrow.off{background:var(--mute)}
 #toasts{position:fixed;right:12px;top:12px;z-index:3000;display:grid;gap:8px}
 .toast{background:var(--panel);color:var(--ink);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:300px}
 @media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:42% 58%}aside{order:2;border-right:0;border-top:1px solid var(--line)}}
 </style></head>
 <body>
-<div id="toasts"></div>
+<div id="toasts"></div><div id="hud" hidden></div>
 <div id="app">
 <aside>
  <header><h1>Fleet Tracker</h1><div><button id="add">Add device</button> <button id="out">Log out</button></div></header>
@@ -55,6 +61,8 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
   <div id="detail" hidden>
    <div class="hd"><b id="dn"></b><span id="ds" class="mute"></span></div>
    <div class="kv" id="kv"></div>
+   <div class="row"><button class="primary" id="nav">Navigate</button><button id="shr">Share</button><button id="cpy">Copy</button></div>
+   <div class="row"><button id="fnd">Find with my phone</button><button id="grd">Guard motor</button></div>
    <label>Speed limit (km/h), alerts when exceeded</label>
    <div class="row"><input id="sl" type="number" min="0"><button id="slb">Save</button></div>
    <div class="row"><button id="fol">Follow</button><button id="del">Delete device</button></div>
@@ -109,13 +117,14 @@ const api=(p,o={})=>fetch('/api'+p,{credentials:'same-origin',...o});
 const J=(p,m,b)=>api(p,{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
 const G=async p=>{const r=await api(p,{headers:{Accept:'application/json'}});if(!r.ok)throw r;return r.json()};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dirs=['N','NE','E','SE','S','SW','W','NW'],cd=c=>dirs[Math.round((c||0)/45)%8];
 const kmh=s=>Math.round((s||0)*1.852);
 const ago=t=>{if(!t)return'never';const s=(Date.now()-new Date(t))/1e3;return s<60?'just now':s<3600?Math.round(s/60)+' min ago':s<86400?Math.round(s/3600)+' h ago':new Date(t).toLocaleDateString()};
 const col=v=>v<30?'#2bb3a5':v<60?'#e6b83f':v<90?'#e6973f':'#e0685f';
 const hav=(a,b)=>{const R=6371e3,r=x=>x*Math.PI/180,dl=r(b.latitude-a.latitude),dn=r(b.longitude-a.longitude),h=Math.sin(dl/2)**2+Math.cos(r(a.latitude))*Math.cos(r(b.latitude))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
 const dur=ms=>{const m=Math.round(ms/6e4);return m<60?m+' min':Math.floor(m/60)+' h '+m%60+' min'};
-const EV={deviceOnline:'came online',deviceOffline:'went offline',deviceMoving:'started moving',deviceStopped:'stopped',geofenceEnter:'entered a zone',geofenceExit:'left a zone',deviceOverspeed:'exceeded the speed limit',ignitionOn:'ignition on',ignitionOff:'ignition off',alarm:'raised an alarm'};
-const dev={},pos={},mk={},zones={};let sel=null,follow=false,ws,signup=false,fitted=false,rl=null,rp=[],ri=0,rm=null,timer=null,picking=false,pick=null;
+const EV={deviceOnline:'came online',deviceOffline:'went offline',deviceMoving:'started moving',deviceStopped:'stopped',geofenceEnter:'entered a zone',geofenceExit:'left a zone',deviceOverspeed:'exceeded the speed limit',alarm:'raised an alarm'};
+const ac={},dev={},pos={},mk={},zones={};let sel=null,follow=false,ws,signup=false,fitted=false,rl=null,rp=[],ri=0,rm=null,timer=null,picking=false,pick=null;
 
 const osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'});
 const sat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Esri'});
@@ -136,15 +145,16 @@ function render(){
     el.innerHTML=`<span class="dot ${st(d)}"></span><b>${esc(d.name)}</b><span>${p?kmh(p.speed)+' km/h':''}</span><small>${p?ago(p.fixTime):'No position yet'}</small>`;
     el.onclick=()=>select(d.id,true);$('#list').appendChild(el);
     if(p){if(!mk[d.id])mk[d.id]=L.marker([p.latitude,p.longitude],{icon:icon(d)}).addTo(map).bindTooltip(d.name,{permanent:true,direction:'top',offset:[0,-14]});
-      else{mk[d.id].setLatLng([p.latitude,p.longitude]);mk[d.id].setIcon(icon(d));mk[d.id].setTooltipContent(d.name)}}
+      else{mk[d.id].setLatLng([p.latitude,p.longitude]);mk[d.id].setIcon(icon(d));mk[d.id].setTooltipContent(d.name)}if(p.accuracy>5){if(!ac[d.id])ac[d.id]=L.circle([p.latitude,p.longitude],{radius:p.accuracy,color:'#0d7c72',weight:1,fillOpacity:.12,interactive:false}).addTo(map);else{ac[d.id].setLatLng([p.latitude,p.longitude]);ac[d.id].setRadius(p.accuracy)}}}
   });
   if(!fitted){const pts=Object.values(mk).map(m=>m.getLatLng());if(pts.length){map.fitBounds(L.latLngBounds(pts),{maxZoom:16,padding:[60,60]});fitted=true}}
-  if(sel!=null&&dev[sel])detail();
+  if(sel!=null&&dev[sel]){detail();hud()}
 }
 function detail(){
   const d=dev[sel],p=pos[sel],a=(p&&p.attributes)||{};
   $('#detail').hidden=false;$('#dn').textContent=d.name;$('#ds').textContent=d.status==='online'?'Online':'Offline - '+ago(d.lastUpdate);
-  const rows=p?[['Speed',kmh(p.speed)+' km/h'],['Updated',ago(p.fixTime)],['Battery',a.batteryLevel!=null?a.batteryLevel+'%':'-'],['Ignition',a.ignition==null?'-':a.ignition?'On':'Off'],['Satellites',a.sat??'-'],['Distance',a.totalDistance?(a.totalDistance/1000).toFixed(1)+' km':'-'],['Position',p.latitude.toFixed(5)+', '+p.longitude.toFixed(5)],['Address',p.address||'-']]:[['Position','No data yet']];
+  const wk=p&&p.weak&&Date.now()-p.weak<12e4;
+  const rows=p?[['Speed',kmh(p.speed)+' km/h'],['Heading',Math.round(p.course||0)+'° '+cd(p.course)],['GPS signal',wk?'Weak, last good position kept':'Good'],['Accuracy',p.accuracy?'±'+Math.round(p.accuracy)+' m':'-'],['Altitude',p.altitude!=null?Math.round(p.altitude)+' m':'-'],['Last fix',ago(p.fixTime)+' ('+new Date(p.fixTime).toLocaleTimeString()+')'],['Position',p.latitude.toFixed(6)+', '+p.longitude.toFixed(6)],['Address',p.address||'-']]:[['Position','No data yet']];
   $('#kv').innerHTML=rows.map(r=>`<span>${r[0]}</span><span>${esc(r[1])}</span>`).join('');
   if(document.activeElement!==$('#sl'))$('#sl').value=d.attributes&&d.attributes.speedLimit?kmh(d.attributes.speedLimit):'';
   if(follow&&mk[sel])map.panTo(mk[sel].getLatLng());
@@ -217,13 +227,36 @@ async function alertsState(){try{const n=await G('/notifications');if(n.some(x=>
 $('#alon').onclick=async()=>{const r=await J('/notifications','POST',{type:'allEvents',notificators:'web',always:true});if(r.ok){$('#alon').textContent='Alerts are on';$('#alon').disabled=true}};
 $('#reg').onclick=async()=>{try{const s=await G('/server');await J('/server','PUT',{...s,registration:false});toast('Public sign-up closed')}catch(e){toast('Only the admin can change this')}};
 function onEvent(ev){const d=dev[ev.deviceId],z=ev.geofenceId&&zones[ev.geofenceId],t=`${d?d.name:'Device'} ${EV[ev.type]||ev.type}${z?' ('+z.name+')':''}`;
-  toast(t);const e=document.createElement('div');e.className='item';e.innerHTML=`${esc(t)}<small>${new Date(ev.eventTime).toLocaleString()}</small>`;$('#evs').prepend(e)}
+  toast(t);if(/geofenceExit|Overspeed|alarm/.test(ev.type))beep();const e=document.createElement('div');e.className='item';e.innerHTML=`${esc(t)}<small>${new Date(ev.eventTime).toLocaleString()}</small>`;$('#evs').prepend(e)}
+
+/* find my motor */
+let me=null,wid=null;
+const brg=(a,b)=>{const r=x=>x*Math.PI/180,dl=r(b.longitude-a.longitude),y=Math.sin(dl)*Math.cos(r(b.latitude)),x=Math.cos(r(a.latitude))*Math.sin(r(b.latitude))-Math.sin(r(a.latitude))*Math.cos(r(b.latitude))*Math.cos(dl);return(Math.atan2(y,x)*180/Math.PI+360)%360};
+const fd=m=>m<1000?Math.round(m)+' m':(m/1000).toFixed(1)+' km';
+function hud(){const p=pos[sel];if(!me||!p){$('#hud').hidden=true;return}
+  const a={latitude:me.lat,longitude:me.lng},b=brg(a,p);$('#hud').hidden=false;
+  $('#hud').innerHTML=`<i style="transform:rotate(${b}deg)"></i><span><b>${esc(dev[sel].name)}</b> is ${fd(hav(a,p))} away, to the ${cd(b)}</span>`}
+$('#fnd').onclick=()=>{
+  if(wid!=null){navigator.geolocation.clearWatch(wid);wid=null;me=null;if(window.mm)map.removeLayer(window.mm);window.mm=null;$('#fnd').textContent='Find with my phone';$('#hud').hidden=true;return}
+  if(!isSecureContext||!navigator.geolocation)return toast('Phone location needs HTTPS. Turn on HTTPS in Coolify first.');
+  wid=navigator.geolocation.watchPosition(g=>{me={lat:g.coords.latitude,lng:g.coords.longitude};
+    if(!window.mm)window.mm=L.circleMarker(me,{radius:7,color:'#fff',weight:2,fillColor:'#2f6fed',fillOpacity:1}).addTo(map);window.mm.setLatLng(me);hud()},()=>toast('Allow location access in your browser'),{enableHighAccuracy:true});
+  $('#fnd').textContent='Stop finding'};
+$('#nav').onclick=()=>{const p=pos[sel];if(p)window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.latitude},${p.longitude}&travelmode=driving`,'_blank')};
+$('#shr').onclick=async()=>{const p=pos[sel];if(!p)return;const u=`https://www.google.com/maps?q=${p.latitude},${p.longitude}`;
+  try{if(navigator.share)await navigator.share({title:dev[sel].name,text:'Position of '+dev[sel].name,url:u});else{await navigator.clipboard.writeText(u);toast('Link copied')}}catch(e){}};
+$('#cpy').onclick=async()=>{const p=pos[sel];if(!p)return;try{await navigator.clipboard.writeText(p.latitude.toFixed(6)+', '+p.longitude.toFixed(6));toast('Coordinates copied')}catch(e){toast('Copy is not available here')}};
+$('#grd').onclick=async()=>{const p=pos[sel],n='Guard: '+dev[sel].name;if(!p)return;
+  try{for(const z of await G('/geofences'))if(z.name===n)await api('/geofences/'+z.id,{method:'DELETE'});
+    const r=await J('/geofences','POST',{name:n,area:`CIRCLE (${p.latitude.toFixed(6)} ${p.longitude.toFixed(6)}, 80)`});
+    if(r.ok){const z=await r.json();await J('/permissions','POST',{deviceId:sel,geofenceId:z.id});toast('Guard is on. You get an alarm if it leaves this spot (80 m).');loadZones()}}catch(e){toast('Could not set the guard')}};
+function beep(){try{const c=new(window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();setTimeout(()=>o.stop(),700);navigator.vibrate&&navigator.vibrate([300,100,300])}catch(e){}}
 
 /* tabs, socket, auth */
 function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
 $$('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t));
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/socket');
-  ws.onmessage=e=>{const m=JSON.parse(e.data);(m.devices||[]).forEach(d=>dev[d.id]=d);(m.positions||[]).forEach(p=>pos[p.deviceId]=p);(m.events||[]).forEach(onEvent);render()};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);(m.devices||[]).forEach(d=>dev[d.id]=d);(m.positions||[]).forEach(p=>{const o=pos[p.deviceId];if(p.valid===false&&o){o.weak=Date.now();return}pos[p.deviceId]=p});(m.events||[]).forEach(onEvent);render()};
   ws.onclose=()=>{if(!$('#login').classList.contains('on'))setTimeout(connect,3000)}}
 async function start(){
   if(!(await api('/session')).ok){$('#login').classList.add('on');return}
