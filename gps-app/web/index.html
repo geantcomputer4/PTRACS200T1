@@ -98,6 +98,9 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
  <div class="row"><input id="cmcc" placeholder="MCC" aria-label="MCC"><input id="cmnc" placeholder="MNC" aria-label="MNC"></div>
  <div class="row"><input id="clac" placeholder="LAC / TAC" aria-label="LAC or TAC"><input id="ccid" placeholder="Cell ID" aria-label="Cell ID"></div>
  <div class="row"><button id="cfill">Fill from my tracker</button><button class="primary" id="cgo">Locate tower</button></div>
+ <div class="row"><button id="cscan">Scan towers here</button><button id="clrn">My learned towers</button></div>
+ <div class="row"><button id="cclr">Clear towers</button></div>
+ <p class="mute">Tower icons: gold = your SIM's tower, purple = same operator, grey = other operators, green = learned from your motor's own GPS.</p>
  <div id="cres" class="mute" style="margin-top:10px"></div>
 </div></section>
 </aside>
@@ -178,7 +181,7 @@ async function route(from,to){
   try{
     const a=await G('/reports/route?'+new URLSearchParams({deviceId:sel,from:from.toISOString(),to:to.toISOString()}));
     clearRoute();if(!a.length){$('#rs').textContent='No positions in this period.';return}
-    rp=a;let dist=0,mx=0;for(let i=1;i<a.length;i++)dist+=hav(a[i-1],a[i]);a.forEach(p=>mx=Math.max(mx,p.speed));
+    rp=a;a.forEach(learn);saveLT();let dist=0,mx=0;for(let i=1;i<a.length;i++)dist+=hav(a[i-1],a[i]);a.forEach(p=>mx=Math.max(mx,p.speed));
     const step=Math.ceil(a.length/1200);rl=L.layerGroup().addTo(map);
     for(let i=step;i<a.length;i+=step){const x=a[i-step],y=a[i];L.polyline([[x.latitude,x.longitude],[y.latitude,y.longitude]],{color:col(kmh(y.speed)),weight:5}).addTo(rl)}
     map.fitBounds(L.latLngBounds(a.map(p=>[p.latitude,p.longitude])),{padding:[40,40]});
@@ -264,7 +267,36 @@ function beep(){try{const c=new(window.AudioContext||window.webkitAudioContext)(
 
 /* toolbox: cell tower locator */
 try{$('#ckey').value=localStorage.getItem('ockey')||''}catch(e){}
-let cm=null,cc=null;
+let cm=null,cc=null,LT={};
+try{LT=JSON.parse(localStorage.getItem('ltow')||'{}')}catch(e){}
+const saveLT=()=>{try{localStorage.setItem('ltow',JSON.stringify(LT))}catch(e){}};
+const tg=L.layerGroup().addTo(map);
+const gen=r=>({GSM:'2G',UMTS:'3G',LTE:'4G',NR:'5G'}[r]||r||'');
+const TI=c=>L.divIcon({className:'',iconSize:[28,28],iconAnchor:[14,24],html:`<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="1.8" fill="${c}"/><path d="M12 10v11M12 10l-4.5 11M12 10l4.5 11M8.5 5a5 5 0 0 0 0 6M15.5 5a5 5 0 0 1 0 6"/></svg>`});
+function learn(p){const a=p.attributes||{};if(a.io1==null||a.io3==null||a.io4==null||p.valid===false||a.approximate)return;
+  const k=[a.io1,a.io2,a.io3,a.io4].join('-'),e=LT[k]||(LT[k]={n:0,lat:p.latitude,lon:p.longitude,r:0});
+  if(p.id&&e.last===p.id)return;e.last=p.id;e.n++;e.lat+=(p.latitude-e.lat)/e.n;e.lon+=(p.longitude-e.lon)/e.n;
+  e.r=Math.max(e.r,hav({latitude:e.lat,longitude:e.lon},p));saveLT()}
+$('#clrn').onclick=()=>{tg.clearLayers();const ks=Object.keys(LT);
+  if(!ks.length)return $('#cres').textContent='Nothing learned yet. Keep the app open while the motor has GPS, or press Show route on a long period.';
+  ks.forEach(k=>{const e=LT[k],q=k.split('-');
+    L.marker([e.lat,e.lon],{icon:TI('#0d7c72')}).addTo(tg).bindTooltip(`Learned tower, LAC ${q[2]}, Cell ${q[3]}, seen ${e.n} times, coverage about ${fd(e.r)}`);
+    L.circle([e.lat,e.lon],{radius:Math.max(e.r,50),color:'#0d7c72',weight:1,fillOpacity:.08,interactive:false}).addTo(tg)});
+  map.fitBounds(L.featureGroup(tg.getLayers()).getBounds(),{padding:[60,60],maxZoom:16});
+  $('#cres').textContent=ks.length+' tower(s) learned from your motor\'s own GPS positions. The icon is the center of where the motor was while connected to it.'};
+$('#cscan').onclick=async()=>{
+  const k=$('#ckey').value.trim();if(!k)return $('#cres').textContent='Paste your free OpenCellID key first.';
+  const c=map.getCenter(),d=0.008;$('#cres').textContent='Scanning...';
+  try{const j=await (await fetch('/cell/cell/getInArea?'+new URLSearchParams({key:k,BBOX:`${c.lat-d},${c.lng-d},${c.lat+d},${c.lng+d}`,format:'json',limit:50}))).json();
+    const cells=j.cells||[];if(!cells.length)return $('#cres').textContent=(j.error||'No towers found here in the free database')+'. Move the map to another place and try again.';
+    tg.clearLayers();const mcc=+$('#cmcc').value,mnc=+$('#cmnc').value,lac=+$('#clac').value,cid=+$('#ccid').value;
+    cells.forEach(x=>{const sim=x.mcc===mcc&&x.mnc===mnc,mine=sim&&x.lac===lac&&x.cellid===cid;
+      L.marker([x.lat,x.lon],{icon:TI(mine?'#d9a400':sim?'#6a5acd':'#7b8a93')}).addTo(tg)
+        .bindTooltip(`${gen(x.radio)} ${x.mcc}-${x.mnc}, LAC ${x.lac}, Cell ${x.cellid}, range ${fd(x.range||0)}`)
+        .on('click',()=>{['cmcc','cmnc','clac','ccid'].forEach((id,i)=>$('#'+id).value=[x.mcc,x.mnc,x.lac,x.cellid][i]);if(['GSM','UMTS','LTE','NR'].includes(x.radio))$('#crad').value=x.radio})});
+    $('#cres').textContent=cells.length+' towers found around the map center. Tap an icon to copy its numbers.'}
+  catch(e){$('#cres').textContent='Scan failed. Check your key and try again.'}};
+$('#cclr').onclick=()=>{tg.clearLayers();if(cm)map.removeLayer(cm);if(cc)map.removeLayer(cc);$('#cres').textContent=''};
 $('#cfill').onclick=()=>{const p=pos[sel];
   if(!p)return $('#cres').textContent='Select your tracker in the Devices tab first.';
   const t=p.network&&p.network.cellTowers&&p.network.cellTowers[0],a=p.attributes||{};let v;
@@ -287,7 +319,7 @@ $('#cgo').onclick=async()=>{
     if(j.lat){note=` Matched as ${r==='GSM'?'2G':r==='UMTS'?'3G':r==='LTE'?'4G':'5G'}${hex?', numbers read as hex':''}.`;break outer}}
   if(!j.lat)return $('#cres').textContent='Tower not found in the free OpenCellID database. Check the numbers, or this tower may not be mapped yet.';
   if(cm)map.removeLayer(cm);if(cc)map.removeLayer(cc);
-  cm=L.marker([j.lat,j.lon]).addTo(map).bindTooltip('Cell tower');
+  cm=L.marker([j.lat,j.lon],{icon:TI('#d9a400')}).addTo(map).bindTooltip('Cell tower');
   cc=L.circle([j.lat,j.lon],{radius:j.range||1000,color:'#6a5acd',weight:1,fillOpacity:.1}).addTo(map);map.fitBounds(cc.getBounds());
   let t=`Tower at ${j.lat.toFixed(5)}, ${j.lon.toFixed(5)}, range about ${fd(j.range||0)}.${note}`;
   const p=pos[sel];if(p)t+=` Your tracker is ${fd(hav({latitude:j.lat,longitude:j.lon},p))} from this tower.`;
@@ -297,12 +329,12 @@ $('#cgo').onclick=async()=>{
 function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
 $$('nav button').forEach(b=>b.onclick=()=>show(b.dataset.t));
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/socket');
-  ws.onmessage=e=>{const m=JSON.parse(e.data);(m.devices||[]).forEach(d=>dev[d.id]=d);(m.positions||[]).forEach(p=>{const o=pos[p.deviceId];if(p.valid===false&&o){o.weak=Date.now();return}pos[p.deviceId]=p});(m.events||[]).forEach(onEvent);render()};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);(m.devices||[]).forEach(d=>dev[d.id]=d);(m.positions||[]).forEach(p=>{const o=pos[p.deviceId];if(p.valid===false&&o){o.weak=Date.now();return}pos[p.deviceId]=p;learn(p)});(m.events||[]).forEach(onEvent);render()};
   ws.onclose=()=>{if(!$('#login').classList.contains('on'))setTimeout(connect,3000)}}
 async function start(){
   if(!(await api('/session')).ok){$('#login').classList.add('on');return}
   $('#login').classList.remove('on');
-  (await G('/devices')).forEach(d=>dev[d.id]=d);(await G('/positions')).forEach(p=>pos[p.deviceId]=p);
+  (await G('/devices')).forEach(d=>dev[d.id]=d);(await G('/positions')).forEach(p=>{pos[p.deviceId]=p;learn(p)});
   $('[data-h="24"]').click();render();connect();loadZones();alertsState()}
 $('#toggle').onclick=()=>{signup=!signup;$('#nameWrap').hidden=!signup;$('#n').required=signup;
   $('#ltitle').textContent=$('#lgo').textContent=signup?'Create account':'Sign in';$('#toggle').textContent=signup?'I have an account':'Create account'};
