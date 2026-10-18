@@ -5,6 +5,14 @@ services:
     ports:
       - "5013:5013"
       - "5013:5013/udp"
+    environment:
+      - CONFIG_USE_ENVIRONMENT_VARIABLES=true
+      - FILTER_ENABLE=true
+      - FILTER_INVALID=true
+      - FILTER_ZERO=true
+      - FILTER_DUPLICATE=true
+      - GEOCODER_ENABLE=true
+      - GEOCODER_TYPE=nominatim
     volumes:
       - traccar-data:/opt/traccar/data
       - traccar-logs:/opt/traccar/logs
