@@ -54,7 +54,7 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
 <div id="app">
 <aside>
  <header><h1>Fleet Tracker</h1><div><button id="add">Add device</button> <button id="out">Log out</button></div></header>
- <nav><button data-t="dev" class="on">Devices</button><button data-t="alr">Alerts</button><button data-t="zon">Zones</button><button data-t="trp">Trips</button></nav>
+ <nav><button data-t="dev" class="on">Devices</button><button data-t="alr">Alerts</button><button data-t="zon">Zones</button><button data-t="trp">Trips</button><button data-t="tbx">Toolbox</button></nav>
 
  <section class="tab on" id="t-dev">
   <div id="stats"></div><div id="list"></div>
@@ -90,6 +90,16 @@ nav button.on{border-bottom-color:var(--accent);color:var(--accent);font-weight:
   </div></div><div id="zl"></div></section>
 
  <section class="tab" id="t-trp"><div class="pad mute" id="tmsg">Select a device, choose a period, then press Trips.</div><div id="tl"></div></section>
+<section class="tab" id="t-tbx"><div class="pad">
+ <b>Cell tower locator</b>
+ <p class="mute">Shows the mobile tower (2G, 3G, 4G or 5G) your tracker's SIM is using. Use it when GPS has no signal. The device is somewhere inside the circle, usually a few hundred meters to a few km wide.</p>
+ <label for="ckey">OpenCellID key (free at opencellid.org)</label><input id="ckey" type="password" placeholder="Paste your key">
+ <label for="crad">Network type</label><select id="crad"><option value="GSM">2G (GSM)</option><option value="UMTS">3G (UMTS)</option><option value="LTE" selected>4G (LTE)</option><option value="NR">5G (NR)</option></select>
+ <div class="row"><input id="cmcc" placeholder="MCC" aria-label="MCC"><input id="cmnc" placeholder="MNC" aria-label="MNC"></div>
+ <div class="row"><input id="clac" placeholder="LAC / TAC" aria-label="LAC or TAC"><input id="ccid" placeholder="Cell ID" aria-label="Cell ID"></div>
+ <div class="row"><button id="cfill">Fill from my tracker</button><button class="primary" id="cgo">Locate tower</button></div>
+ <div id="cres" class="mute" style="margin-top:10px"></div>
+</div></section>
 </aside>
 <div id="map"></div>
 </div>
@@ -154,7 +164,7 @@ function detail(){
   const d=dev[sel],p=pos[sel],a=(p&&p.attributes)||{};
   $('#detail').hidden=false;$('#dn').textContent=d.name;$('#ds').textContent=d.status==='online'?'Online':'Offline - '+ago(d.lastUpdate);
   const wk=p&&p.weak&&Date.now()-p.weak<12e4;
-  const rows=p?[['Speed',kmh(p.speed)+' km/h'],['Heading',Math.round(p.course||0)+'° '+cd(p.course)],['GPS signal',wk?'Weak, last good position kept':'Good'],['Accuracy',p.accuracy?'±'+Math.round(p.accuracy)+' m':'-'],['Altitude',p.altitude!=null?Math.round(p.altitude)+' m':'-'],['Last fix',ago(p.fixTime)+' ('+new Date(p.fixTime).toLocaleTimeString()+')'],['Position',p.latitude.toFixed(6)+', '+p.longitude.toFixed(6)],['Address',p.address||'-']]:[['Position','No data yet']];
+  const rows=p?[['Speed',kmh(p.speed)+' km/h'],['Heading',Math.round(p.course||0)+'° '+cd(p.course)],['GPS signal',a.approximate?'Cell tower (approximate)':wk?'Weak, last good position kept':'Good'],['Accuracy',p.accuracy?'±'+Math.round(p.accuracy)+' m':'-'],['Altitude',p.altitude!=null?Math.round(p.altitude)+' m':'-'],['Last fix',ago(p.fixTime)+' ('+new Date(p.fixTime).toLocaleTimeString()+')'],['Position',p.latitude.toFixed(6)+', '+p.longitude.toFixed(6)],['Address',p.address||'-']]:[['Position','No data yet']];
   $('#kv').innerHTML=rows.map(r=>`<span>${r[0]}</span><span>${esc(r[1])}</span>`).join('');
   if(document.activeElement!==$('#sl'))$('#sl').value=d.attributes&&d.attributes.speedLimit?kmh(d.attributes.speedLimit):'';
   if(follow&&mk[sel])map.panTo(mk[sel].getLatLng());
@@ -251,6 +261,28 @@ $('#grd').onclick=async()=>{const p=pos[sel],n='Guard: '+dev[sel].name;if(!p)ret
     const r=await J('/geofences','POST',{name:n,area:`CIRCLE (${p.latitude.toFixed(6)} ${p.longitude.toFixed(6)}, 80)`});
     if(r.ok){const z=await r.json();await J('/permissions','POST',{deviceId:sel,geofenceId:z.id});toast('Guard is on. You get an alarm if it leaves this spot (80 m).');loadZones()}}catch(e){toast('Could not set the guard')}};
 function beep(){try{const c=new(window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();setTimeout(()=>o.stop(),700);navigator.vibrate&&navigator.vibrate([300,100,300])}catch(e){}}
+
+/* toolbox: cell tower locator */
+try{$('#ckey').value=localStorage.getItem('ockey')||''}catch(e){}
+let cm=null,cc=null;
+$('#cfill').onclick=()=>{const p=pos[sel],t=p&&p.network&&p.network.cellTowers&&p.network.cellTowers[0];
+  if(!t)return $('#cres').textContent='Select your tracker first. It has not sent tower data yet.';
+  $('#cmcc').value=t.mobileCountryCode;$('#cmnc').value=t.mobileNetworkCode;$('#clac').value=t.locationAreaCode;$('#ccid').value=t.cellId;
+  const m={gsm:'GSM',wcdma:'UMTS',umts:'UMTS',lte:'LTE',nr:'NR'}[String(t.radioType||'').toLowerCase()];if(m)$('#crad').value=m;
+  $('#cres').textContent='Filled from the last tower your tracker reported.'};
+$('#cgo').onclick=async()=>{
+  const k=$('#ckey').value.trim();if(!k)return $('#cres').textContent='Paste your free OpenCellID key first.';
+  try{localStorage.setItem('ockey',k)}catch(e){}
+  const q=new URLSearchParams({key:k,mcc:$('#cmcc').value,mnc:$('#cmnc').value,lac:$('#clac').value,cellid:$('#ccid').value,radio:$('#crad').value,format:'json'});
+  $('#cres').textContent='Looking up...';
+  try{const j=await (await fetch('/cell/cell/get?'+q)).json();
+    if(!j.lat)return $('#cres').textContent='Tower not found. Try another network type (2G, 3G, 4G, 5G) or check the numbers.';
+    if(cm)map.removeLayer(cm);if(cc)map.removeLayer(cc);
+    cm=L.marker([j.lat,j.lon]).addTo(map).bindTooltip('Cell tower');
+    cc=L.circle([j.lat,j.lon],{radius:j.range||1000,color:'#6a5acd',weight:1,fillOpacity:.1}).addTo(map);map.fitBounds(cc.getBounds());
+    let t=`Tower at ${j.lat.toFixed(5)}, ${j.lon.toFixed(5)}, range about ${fd(j.range||0)}.`;
+    const p=pos[sel];if(p)t+=` Your tracker is ${fd(hav({latitude:j.lat,longitude:j.lon},p))} from this tower.`;
+    $('#cres').textContent=t}catch(e){$('#cres').textContent='Lookup failed. Check the key and try again.'}};
 
 /* tabs, socket, auth */
 function show(t){$$('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$$('.tab').forEach(s=>s.classList.toggle('on',s.id==='t-'+t))}
